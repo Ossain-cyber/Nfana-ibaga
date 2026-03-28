@@ -1,0 +1,63 @@
+<!DOCTYPE html><html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nfana Ibaga – Power Run</title>
+<style>
+body{margin:0;overflow:hidden;background:black;color:white;font-family:Poppins,sans-serif}
+canvas{display:block}
+#hud{position:absolute;top:10px;left:50%;transform:translateX(-50%);font-size:16px;letter-spacing:2px}
+#startScreen{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
+button{padding:14px 32px;margin:8px;font-size:18px;border:none;border-radius:40px;background:#00ffcc;cursor:pointer}
+footer{position:absolute;bottom:10px;width:100%;text-align:center;opacity:0.5;font-size:12px}
+input{padding:8px 12px;font-size:16px;border-radius:8px;border:none;margin-top:10px;width:200px;text-align:center}
+</style>
+</head>
+<body>
+<div id="hud">Energy: <span id="score">0</span> | Level: <span id="level">1</span> | Shield: <span id="shield">OFF</span> | Best: <span id="best">0</span></div>
+<div id="startScreen">
+<h1>NFANA IBAGA</h1>
+<p>Enter your name and collect strength. Avoid doubt. Stay unstoppable.</p>
+<input type="text" id="playerName" placeholder="Your name" maxlength="12"/><br>
+<button onclick="startGame()">Start Run</button>
+<button onclick="goFullscreen()">Fullscreen</button>
+</div>
+<canvas id="game"></canvas>
+<footer>Built by Rabbi • rabbi111@duck.com</footer>
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
+let player={x:canvas.width/2,y:canvas.height-120,size:22,speed:6};
+let energy=[],doubt=[],shieldOrbs=[],boss=null;
+let score=0,level=1,shield=false,running=false;
+let playerName='';
+let bestScore=localStorage.getItem("nfanaBest")||0;
+document.getElementById("best").innerText=bestScore;
+const audio=new Audio("https://actions.google.com/sounds/v1/ambiences/heartbeat.ogg");audio.loop=true;
+function spawnEnergy(){energy.push({x:Math.random()*canvas.width,y:-20,size:10,speed:3+level*0.4})}
+function spawnDoubt(){doubt.push({x:Math.random()*canvas.width,y:-20,size:18,speed:4+level*0.5})}
+function spawnShield(){shieldOrbs.push({x:Math.random()*canvas.width,y:-20,size:14,speed:3})}
+setInterval(spawnEnergy,700);setInterval(spawnDoubt,1200);setInterval(spawnShield,9000);
+let keys={};window.addEventListener("keydown",e=>keys[e.key]=true);window.addEventListener("keyup",e=>keys[e.key]=false);
+canvas.addEventListener("touchmove",e=>{player.x=e.touches[0].clientX;player.y=e.touches[0].clientY});
+function movePlayer(){if(keys["ArrowLeft"])player.x-=player.speed;if(keys["ArrowRight"])player.x+=player.speed;if(keys["ArrowUp"])player.y-=player.speed;if(keys["ArrowDown"])player.y+=player.speed}
+function collision(a,b){return Math.hypot(a.x-b.x,a.y-b.y)<a.size+b.size}
+function drawRabbit(){let glow=score*0.15;ctx.shadowBlur=glow;ctx.shadowColor="#00ffcc";ctx.fillStyle="#00ffcc";ctx.beginPath();ctx.arc(player.x,player.y,player.size,0,Math.PI*2);ctx.fill();ctx.fillRect(player.x-6,player.y-28,5,18);ctx.fillRect(player.x+1,player.y-28,5,18);ctx.shadowBlur=0}
+function spawnBoss(){boss={x:canvas.width/2,y:-60,size:60,speed:2+level}}
+function drawBoss(){ctx.fillStyle="purple";ctx.beginPath();ctx.arc(boss.x,boss.y,boss.size,0,Math.PI*2);ctx.fill();boss.y+=boss.speed;if(collision(player,boss)){if(!shield) endGame();else boss=null}if(boss.y>canvas.height+100)boss=null}
+function updateLevel(){level=Math.floor(score/10)+1;document.getElementById("level").innerText=level;if(score%30===0 && boss===null)spawnBoss()}
+function endGame(){if(score>bestScore){bestScore=score;localStorage.setItem("nfanaBest",score)}
+let name=playerName||'Player';
+alert(name+" achieved "+score+" energy points!");location.reload()}
+function update(){ctx.clearRect(0,0,canvas.width,canvas.height);movePlayer();drawRabbit();energy.forEach((e,i)=>{e.y+=e.speed;ctx.fillStyle="#00ffcc";ctx.beginPath();ctx.arc(e.x,e.y,e.size,0,Math.PI*2);ctx.fill();if(collision(player,e)){energy.splice(i,1);score++;document.getElementById("score").innerText=score;updateLevel();if(score%15===0){shield=true;setTimeout(()=>shield=false,5000)}}});
+shieldOrbs.forEach((s,i)=>{s.y+=s.speed;ctx.fillStyle="gold";ctx.beginPath();ctx.arc(s.x,s.y,s.size,0,Math.PI*2);ctx.fill();if(collision(player,s)){shield=true;shieldOrbs.splice(i,1);setTimeout(()=>shield=false,7000)}});
+if(boss)drawBoss();doubt.forEach((d,i)=>{d.y+=d.speed;ctx.fillStyle="red";ctx.beginPath();ctx.arc(d.x,d.y,d.size,0,Math.PI*2);ctx.fill();if(collision(player,d)){if(shield)doubt.splice(i,1);else endGame()}});
+if(shield){document.getElementById("shield").innerText="ACTIVE";ctx.strokeStyle="gold";ctx.lineWidth=3;ctx.beginPath();ctx.arc(player.x,player.y,player.size+6,0,Math.PI*2);ctx.stroke();}else{document.getElementById("shield").innerText="OFF"}
+if(running)requestAnimationFrame(update)}
+function startGame(){playerName=document.getElementById("playerName").value||'Player';document.getElementById("startScreen").style.display="none";audio.play();running=true;update()}
+function goFullscreen(){document.documentElement.requestFullscreen()}
+</script>
+</body>
+</html>
