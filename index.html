@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Nfana Ibaga – Power Run</title>
+<style>
+* {
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    margin: 0;
+    overflow: hidden;
+    background: linear-gradient(180deg, #0a0f1e 0%, #0a0a1a 100%);
+    color: white;
+    font-family: 'Poppins', 'Segoe UI', monospace;
+}
+
+canvas {
+    display: block;
+    cursor: none;
+}
+
+#hud {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    right: 15px;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: bold;
+    text-shadow: 0 0 5px rgba(0,0,0,0.5);
+    background: rgba(0,0,0,0.6);
+    padding: 8px 15px;
+    border-radius: 30px;
+    backdrop-filter: blur(5px);
+    z-index: 10;
+    pointer-events: none;
+}
+
+#hud span {
+    color: #00ffcc;
+}
+
+#startScreen {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(10px);
+    padding: 40px;
+    border-radius: 30px;
+    border: 1px solid #00ffcc;
+    z-index: 20;
+    min-width: 280px;
+}
+
+#startScreen h1 {
+    color: #00ffcc;
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+    letter-spacing: 3px;
+}
+
+#startScreen p {
+    color: #ccc;
+    margin-bottom: 20px;
+}
+
+button {
+    padding: 12px 28px;
+    margin: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    border: none;
+    border-radius: 50px;
+    background: #00ffcc;
+    color: #0a0a1a;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+button:hover {
+    transform: scale(1.02);
+    box-shadow: 0 0 15px #00ffcc;
+}
+
+input {
+    padding: 10px 15px;
+    font-size: 16px;
+    border-radius: 50px;
+    border: none;
+    margin: 15px 0;
+    width: 200px;
+    text-align: center;
+    background: #1a1a2e;
+    color: white;
+    outline: none;
+}
+
+input:focus {
+    border: 1px solid #00ffcc;
+}
+
+footer {
+    position: absolute;
+    bottom: 10px;
+    width: 100%;
+    text-align: center;
+    opacity: 0.5;
+    font-size: 11px;
+    z-index: 10;
+    pointer-events: none;
+}
+
+#gameOverScreen {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    background: rgba(0,0,0,0.95);
+    backdrop-filter: blur(10px);
+    padding: 30px;
+    border-radius: 30px;
+    border: 1px solid #ff3366;
+    z-index: 20;
+    display: none;
+}
+
+#gameOverScreen h2 {
+    color: #ff3366;
+    margin-bottom: 10px;
+}
+
+.restart-btn {
+    background: #ff3366;
+    color: white;
+}
+</style>
+</head>
+<body>
+<div id="hud">
+    <span>ENERGY: <span id="score">0</span></span>
+    <span>LEVEL: <span id="level">1</span></span>
+    <span>SHIELD: <span id="shield">OFF</span></span>
+    <span>BEST: <span id="best">0</span></span>
+</div>
+
+<div id="startScreen">
+    <h1>NFANA IBAGA</h1>
+    <p>Collect energy • Avoid doubt • Stay unstoppable</p>
+    <input type="text" id="playerName" placeholder="Enter your name" maxlength="16" autocomplete="off">
+    <br>
+    <button onclick="startGame()">START RUN</button>
+    <button onclick="goFullscreen()">FULLSCREEN</button>
+</div>
+
+<div id="gameOverScreen">
+    <h2>GAME OVER</h2>
+    <p id="finalScore"></p>
+    <button class="restart-btn" onclick="restartGame()">PLAY AGAIN</button>
+</div>
+
+<canvas id="game"></canvas>
+<footer>Nfana Ibaga • Stay unstoppable</footer>
+
+<script>
+// DOM elements
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// Game state
+let running = false;
+let animationId = null;
+let score = 0;
+let level = 1;
+let shieldActive = false;
+let shieldTimer = null;
+let playerName = 'Warrior';
+let bestScore = parseInt(localStorage.getItem('nfanaBest')) || 0;
+
+// Entities
+let player = { x: 0, y: 0, size: 24, speed: 7 };
+let energies = [];
+let doubts = [];
+let shields = [];
+let bosses = [];
+
+// Spawn timers
+let energySpawnInterval = null;
+let doubtSpawnInterval = null;
+let shieldSpawnInterval = null;
+
+// Input handling
+let keys = { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false };
+let touchX = null;
+
+// Initialize display
+document.getElementById('best').innerText = bestScore;
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    player.x = canvas.width / 2;
+    player.y = canvas.height - 100;
+    // Reset game objects positions when resizing to avoid out-of-bounds
+    if (!running) return;
+    player.x = Math.min(Math.max(player.x, player.size + 5), canvas.width - player.size - 5);
+    player.y = Math.min(Math.max(player.y, player.size + 5), canvas.height - player.size - 5);
+}
+
+// Input event listeners
+window.addEventListener('keydown', (e) => {
+    if (keys.hasOwnProperty(e.key)) {
+        keys[e.key] = true;
+        e.preventDefault();
+    }
+});
+window.addEventListener('keyup', (e) => {
+    if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
+});
+
+// Touch/mouse controls
+function handleMove(clientX, clientY) {
+    if (!running) return;
+    let rect = canvas.getBoundingClientRect();
+    let scaleX = canvas.width / rect.width;
+    let scaleY = canvas.height / rect.height;
+    let targetX = (clientX - rect.left) * scaleX;
+    let targetY = (clientY - rect.top) * scaleY;
+    player.x = Math.min(Math.max(targetX, player.size + 5), canvas.width - player.size - 5);
+    player.y = Math.min(Math.max(targetY, player.size + 5), canvas.height - player.size - 5);
+}
+
+canvas.addEventListener('mousemove', (e) => {
+    if (e.buttons === 1) handleMove(e.clientX, e.clientY);
+});
+canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    let touch = e.touches[0];
+    handleMove(touch.clientX, touch.clientY);
+});
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    let touch = e.touches[0];
+    handleMove(touch.clientX, touch.clientY);
+});
+
+function movePlayer() {
+    let newX = player.x;
+    let newY = player.y;
+    if (keys.ArrowLeft) newX -= player.speed;
+    if (keys.ArrowRight) newX += player.speed;
+    if (keys.ArrowUp) newY -= player.speed;
+    if (keys.ArrowDown) newY += player.speed;
+    
+    player.x = Math.min(Math.max(newX, player.size + 5), canvas.width - player.size - 5);
+    player.y = Math.min(Math.max(newY, player.size + 5), canvas.height - player.size - 5);
+}
+
+function spawnEnergy() {
+    if (!running) return;
+    energies.push({
+        x: Math.random() * (canvas.width - 40) + 20,
+        y: -20,
+        size: 12,
+        speed: 3 + level * 0.3
+    });
+}
+
+function spawnDoubt() {
+    if (!running) return;
+    doubts.push({
+        x: Math.random() * (canvas.width - 40) + 20,
+        y: -20,
+        size: 18,
+        speed: 3.5 + level * 0.4
+    });
+}
+
+function spawnShieldOrb() {
+    if (!running) return;
+    shields.push({
+        x: Math.random() * (canvas.width - 40) + 20,
+        y: -20,
+        size: 14,
+        speed: 2.5
+    });
+}
+
+function spawnBoss() {
+    if (!running) return;
+    if (bosses.length < 2 && score >= 15) {
+        bosses.push({
+            x: Math.random() * (canvas.width - 100) + 50,
+            y: -80,
+            size: 55,
+            speed: 1.5 + level * 0.2
+        });
+    }
+}
+
+function updateLevel() {
+    let newLevel = Math.floor(score / 12) + 1;
+    if (newLevel !== level) {
+        level = newLevel;
+        document.getElementById('level').innerText = level;
+        // Adjust spawn rates by resetting intervals
+        if (running) {
+            clearInterval(energySpawnInterval);
+            clearInterval(doubtSpawnInterval);
+            energySpawnInterval = setInterval(spawnEnergy, Math.max(400, 800 - level * 30));
+            doubtSpawnInterval = setInterval(spawnDoubt, Math.max(800, 1300 - level * 40));
+        }
+    }
+}
+
+function activateShield(duration = 5000) {
+    if (shieldTimer) clearTimeout(shieldTimer);
+    shieldActive = true;
+    document.getElementById('shield').innerText = 'ACTIVE';
+    document.getElementById('shield').style.color = '#ffaa44';
+    shieldTimer = setTimeout(() => {
+        shieldActive = false;
+        document.getElementById('shield').innerText = 'OFF';
+        document.getElementById('shield').style.color = '#00ffcc';
+        shieldTimer = null;
+    }, duration);
+}
+
+function endGame() {
+    if (!running) return;
+    running = false;
+    
+    // Clear all intervals
+    if (energySpawnInterval) clearInterval(energySpawnInterval);
+    if (doubtSpawnInterval) clearInterval(doubtSpawnInterval);
+    if (shieldSpawnInterval) clearInterval(shieldSpawnInterval);
+    if (shieldTimer) clearTimeout(shieldTimer);
+    
+    if (score > bestScore) {
+        bestScore = score;
+        localStorage.setItem('nfanaBest', bestScore);
+        document.getElementById('best').innerText = bestScore;
+    }
+    
+    document.getElementById('finalScore').innerHTML = `${playerName || 'Warrior'}, you reached <strong>${score}</strong> Energy!<br>Level ${level}`;
+    document.getElementById('gameOverScreen').style.display = 'block';
+    
+    if (animationId) {
+        cancelAnimationFrame(animationId);
+        animationId = null;
+    }
+}
+
+function restartGame() {
+    document.getElementById('gameOverScreen').style.display = 'none';
+    // Reset all game state
+    score = 0;
+    level = 1;
+    shieldActive = false;
+    energies = [];
+    doubts = [];
+    shields = [];
+    bosses = [];
+    
+    document.getElementById('score').innerText = '0';
+    document.getElementById('level').innerText = '1';
+    document.getElementById('shield').innerText = 'OFF';
+    document.getElementById('shield').style.color = '#00ffcc';
+    
+    player.x = canvas.width / 2;
+    player.y = canvas.height - 100;
+    
+    startGameLogic();
+}
+
+function startGameLogic() {
+    if (animationId) cancelAnimationFrame(animationId);
+    
+    running = true;
+    
+    // Start spawn intervals
+    energySpawnInterval = setInterval(spawnEnergy, 700);
+    doubtSpawnInterval = setInterval(spawnDoubt, 1100);
+    shieldSpawnInterval = setInterval(spawnShieldOrb, 8000);
+    
+    // Boss spawn every 15 seconds
+    setInterval(() => {
+        if (running) spawnBoss();
+    }, 12000);
+    
+    animationId = requestAnimationFrame(gameLoop);
+}
+
+function drawPlayer() {
+    // Glow effect based on shield
+    ctx.shadowBlur = shieldActive ? 20 : 10;
+    ctx.shadowColor = shieldActive ? '#ffaa44' : '#00ffcc';
+    
+    // Main body
+    ctx.fillStyle = shieldActive ? '#ffaa44' : '#00ffcc';
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Ears
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.rect(player.x - 10, player.y - 28, 7, 22);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.rect(player.x + 3, player.y - 28, 7, 22);
+    ctx.fill();
+    
+    // Eyes
+    ctx.fillStyle = '#000000';
+    ctx.beginPath();
+    ctx.arc(player.x - 7, player.y - 4, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(player.x + 7, player.y - 4, 3, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.shadowBlur = 0;
+}
+
+function drawEnergies() {
+    for (let i = 0; i < energies.length; i++) {
+        let e = energies[i];
+        e.y += e.speed;
+        
+        ctx.fillStyle = '#44ff88';
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = '#44ff88';
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Collision
+        if (Math.hypot(player.x - e.x, player.y - e.y) < player.size + e.size) {
+            energies.splice(i, 1);
+            score++;
+            document.getElementById('score').innerText = score;
+            updateLevel();
+            i--;
+            continue;
+        }
+        
+        // Remove if off screen
+        if (e.y > canvas.height + 50) {
+            energies.splice(i, 1);
+            i--;
+        }
+    }
+}
+
+function drawDoubts() {
+    for (let i = 0; i < doubts.length; i++) {
+        let d = doubts[i];
+        d.y += d.speed;
+        
+        ctx.fillStyle = '#ff3366';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#ff3366';
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Collision with player
+        if (Math.hypot(player.x - d.x, player.y - d.y) < player.size + d.size) {
+            if (!shieldActive) {
+                endGame();
+                return;
+            } else {
+                doubts.splice(i, 1);
+                i--;
+            }
+            continue;
+        }
+        
+        if (d.y > canvas.height + 50) {
+            doubts.splice(i, 1);
+            i--;
+        }
+    }
+}
+
+function drawShields() {
+    for (let i = 0; i < shields.length; i++) {
+        let s = shields[i];
+        s.y += s.speed;
+        
+        ctx.fillStyle = '#ffcc44';
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = '#ffcc44';
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+        ctx.fill();
+        
+        if (Math.hypot(player.x - s.x, player.y - s.y) < player.size + s.size) {
+            activateShield(6000);
+            shields.splice(i, 1);
+            i--;
+            continue;
+        }
+        
+        if (s.y > canvas.height + 50) {
+            shields.splice(i, 1);
+            i--;
+        }
+    }
+}
+
+function drawBosses() {
+    for (let i = 0; i < bosses.length; i++) {
+        let b = bosses[i];
+        b.y += b.speed;
+        
+        ctx.fillStyle = '#aa44ff';
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#aa44ff';
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Boss text
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 14px Poppins';
+        ctx.shadowBlur = 0;
+        ctx.fillText('DOUBT', b.x - 25, b.y - 10);
+        
+        if (Math.hypot(player.x - b.x, player.y - b.y) < player.size + b.size) {
+            if (!shieldActive) {
+                endGame();
+                return;
+            } else {
+                bosses.splice(i, 1);
+                i--;
+            }
+            continue;
+        }
+        
+        if (b.y > canvas.height + 100) {
+            bosses.splice(i, 1);
+            i--;
+        }
+    }
+}
+
+function drawBackground() {
+    // Stars
+    for (let i = 0; i < 100; i++) {
+        if (i % 2 === 0) continue; // lazy random
+        ctx.fillStyle = `rgba(255,255,200,${0.3 + Math.sin(Date.now() * 0.001 + i) * 0.2})`;
+        ctx.fillRect((i * 131) % canvas.width, (i * 57) % canvas.height, 2, 2);
+    }
+}
+
+function gameLoop() {
+    if (!running) return;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawBackground();
+    movePlayer();
+    drawPlayer();
+    drawEnergies();
+    drawDoubts();
+    drawShields();
+    drawBosses();
+    
+    ctx.shadowBlur = 0;
+    
+    animationId = requestAnimationFrame(gameLoop);
+}
+
+function startGame() {
+    let nameInput = document.getElementById('playerName').value.trim();
+    playerName = nameInput || 'Warrior';
+    document.getElementById('startScreen').style.display = 'none';
+    resizeCanvas();
+    startGameLogic();
+}
+
+function goFullscreen() {
+    if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen();
+    }
+}
+
+window.addEventListener('resize', () => {
+    resizeCanvas();
+});
+
+resizeCanvas();
+</script>
+</body>
+</html>
